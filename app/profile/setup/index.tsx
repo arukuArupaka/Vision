@@ -11,18 +11,22 @@ import {
 } from 'react-native'
 
 import { getSupabase } from '@/lib/supabase/client'
+import { HashtagSelector } from '../../../components/hashtag-selector'
+import { HASHTAG_OPTIONS } from '../../../constants/hashtags'
 
 const HIGH_SCHOOL_GRADES = ['高校1年生', '高校2年生', '高校3年生']
+const HIGH_SCHOOL_NAMES = ['立命館高校', '立命館守山高校', '立命館宇治高校']
 const UNIVERSITY_YEARS = ['1回生', '2回生', '3回生', '4回生', '大学院生']
 const GENDERS = ['回答しない', '男性', '女性', 'その他']
 
 export default function ProfileSetupScreen() {
   const router = useRouter()
-  const { role: rawRole } = useLocalSearchParams<{ role?: string | string[] }>()
+  const { role: rawRole, mode } = useLocalSearchParams<{ role?: string | string[]; mode?: string }>()
   const roleParam = (Array.isArray(rawRole) ? rawRole[0] : rawRole) as
     | 'high_school'
     | 'university'
     | undefined
+  const isEditing = mode === 'edit'
 
   const [role, setRole] = useState<'high_school' | 'university'>(roleParam || 'high_school')
   const [nickname, setNickname] = useState('')
@@ -33,6 +37,7 @@ export default function ProfileSetupScreen() {
   const [year, setYear] = useState('')
   const [homeSchool, setHomeSchool] = useState('')
   const [bio, setBio] = useState('')
+  const [notificationHashtags, setNotificationHashtags] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState('')
@@ -44,7 +49,28 @@ export default function ProfileSetupScreen() {
       const { data } = await supabase.auth.getUser()
       if (data.user) {
         setUserId(data.user.id)
-        if (data.user.user_metadata?.role) {
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single()
+
+        if (existingProfile) {
+          setRole(existingProfile.role)
+          setNickname(existingProfile.nickname || '')
+          setGender(existingProfile.gender || '回答しない')
+          setSchoolName(
+            existingProfile.role === 'high_school'
+              ? existingProfile.school_name || ''
+              : existingProfile.university_name || ''
+          )
+          setGrade(existingProfile.grade || '')
+          setFaculty(existingProfile.faculty || '')
+          setYear(existingProfile.year || '')
+          setHomeSchool(existingProfile.home_school || '')
+          setBio(existingProfile.bio || '')
+          setNotificationHashtags(existingProfile.notification_hashtags || [])
+        } else if (data.user.user_metadata?.role) {
           setRole(data.user.user_metadata.role)
         }
       } else {
@@ -77,14 +103,21 @@ export default function ProfileSetupScreen() {
       year: !isHighSchool ? year : null,
       home_school: !isHighSchool ? homeSchool : null,
       bio: !isHighSchool ? bio : null,
+      notification_hashtags: !isHighSchool ? notificationHashtags : [],
     }
 
-    const { error: insertError } = await supabase.from('profiles').insert(profileData)
+    const { error: upsertError } = await supabase
+      .from('profiles')
+      .upsert(profileData, { onConflict: 'id' })
 
-    if (insertError) {
-      setError(insertError.message)
+    if (upsertError) {
+      setError(upsertError.message)
       setLoading(false)
     } else {
+      if (isEditing) {
+        router.back()
+        return
+      }
       router.replace(isHighSchool ? '/student' : '/senpai')
     }
   }
@@ -92,14 +125,14 @@ export default function ProfileSetupScreen() {
   if (initializing) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563EB" />
+        <ActivityIndicator size="large" color="#f97316" />
       </View>
     )
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>プロフィール設定</Text>
+      <Text style={styles.title}>{isEditing ? 'プロフィール編集' : 'プロフィール設定'}</Text>
       <Text style={styles.subtitle}>掲示板で表示される情報です</Text>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -118,12 +151,7 @@ export default function ProfileSetupScreen() {
       {isHighSchool ? (
         <>
           <Text style={styles.label}>通っている学校名</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="例：〇〇高校"
-            value={schoolName}
-            onChangeText={setSchoolName}
-          />
+          <OptionList options={HIGH_SCHOOL_NAMES} value={schoolName} onChange={setSchoolName} />
 
           <Text style={styles.label}>学年</Text>
           <OptionList options={HIGH_SCHOOL_GRADES} value={grade} onChange={setGrade} />
@@ -157,18 +185,31 @@ export default function ProfileSetupScreen() {
             onChangeText={setBio}
             multiline
           />
+
+          <HashtagSelector
+            title="通知を受けるハッシュタグ"
+            description="興味のある話題の質問が投稿されたときに見つけやすくなります"
+            options={HASHTAG_OPTIONS}
+            value={notificationHashtags}
+            onChange={setNotificationHashtags}
+          />
         </>
       )}
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.replace('/')}> 
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => (isEditing ? router.back() : router.replace('/'))}
+        >
           <Text style={styles.secondaryButtonText}>戻る</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
           {loading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.primaryButtonText}>登録を完了する</Text>
+            <Text style={styles.primaryButtonText}>
+              {isEditing ? '変更を保存する' : '登録を完了する'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -206,6 +247,7 @@ function OptionList({
 const styles = StyleSheet.create({
   container: {
     padding: 24,
+    paddingTop: 36,
     backgroundColor: '#ffffff',
   },
   center: {
@@ -229,7 +271,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#CBD5F5',
+    borderColor: '#FED7AA',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -251,11 +293,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#CBD5F5',
+    borderColor: '#FED7AA',
   },
   optionItemSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: '#f97316',
+    borderColor: '#f97316',
   },
   optionText: {
     fontSize: 12,
@@ -271,7 +313,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#f97316',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
@@ -283,7 +325,7 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#CBD5F5',
+    borderColor: '#FED7AA',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',

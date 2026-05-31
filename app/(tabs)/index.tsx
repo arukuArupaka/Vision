@@ -71,6 +71,10 @@ export default function WelcomeScreen() {
           <Text style={styles.roleTitle}>大学生です</Text>
           <Text style={styles.roleDescription}>高校生のギモンに答えてあげたい方</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/auth/login')}>
+          <Text style={styles.loginLinkText}>すでにアカウントをお持ちの方はこちら</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -79,7 +83,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#f97316',
     justifyContent: 'center',
     padding: 24,
   },
@@ -101,7 +105,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#E0F2FE',
+    backgroundColor: '#FFF7ED',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -128,12 +132,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   roleButtonPrimary: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: '#f97316',
+    backgroundColor: '#FFF7ED',
   },
   roleButtonSecondary: {
-    borderColor: '#38BDF8',
-    backgroundColor: '#F0F9FF',
+    borderColor: '#fb923c',
+    backgroundColor: '#FFF7ED',
   },
   roleTitle: {
     fontSize: 16,
@@ -143,5 +147,11 @@ const styles = StyleSheet.create({
   roleDescription: {
     fontSize: 12,
     color: '#64748B',
+  },
+  loginLinkText: {
+    marginTop: 8,
+    color: '#f97316',
+    textAlign: 'center',
+    fontWeight: '600',
   },
 });

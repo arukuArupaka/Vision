@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { AppHeader } from '@/components/app-header'
 import { QuestionCard } from '@/components/question-card'
@@ -32,6 +33,7 @@ interface Question {
   id: string
   title: string
   content: string
+  hashtags?: string[] | null
   created_at: string
   user_id: string
   profiles: {
@@ -47,6 +49,7 @@ export default function StudentDashboard() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
+  const [isModalVisible, setIsModalVisible] = useState(false)
 
   const loadQuestions = async () => {
     const supabase = getSupabase()
@@ -64,7 +67,19 @@ export default function StudentDashboard() {
       )
       .order('created_at', { ascending: false })
 
-    setQuestions(questionsData || [])
+    const parsedQuestions = (questionsData || []).map((q: any) => {
+      let parsedHashtags = q.hashtags
+      if (typeof q.hashtags === 'string') {
+        try {
+          parsedHashtags = JSON.parse(q.hashtags)
+        } catch (e) {
+          parsedHashtags = []
+        }
+      }
+      return { ...q, hashtags: parsedHashtags }
+    })
+
+    setQuestions(parsedQuestions)
   }
 
   useEffect(() => {
@@ -103,6 +118,7 @@ export default function StudentDashboard() {
 
   const handleQuestionPosted = (newQuestion: Question) => {
     setQuestions((prev) => [newQuestion, ...prev])
+    setIsModalVisible(false)
   }
 
   const handleDeleteQuestion = async (questionId: string) => {
@@ -114,7 +130,7 @@ export default function StudentDashboard() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563EB" />
+        <ActivityIndicator size="large" color="#f97316" />
       </View>
     )
   }
@@ -125,13 +141,11 @@ export default function StudentDashboard() {
         title="キャンパス・トーク"
         subtitle="高校生の「ギモン」に大学生の「リアル」を"
         variant="primary"
+        showBack
+        onBackPress={() => router.back()}
       />
 
       <ScrollView contentContainerStyle={styles.container}>
-        {profile ? (
-          <QuestionForm profile={profile} onQuestionPosted={handleQuestionPosted} />
-        ) : null}
-
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>みんなの質問</Text>
         </View>
@@ -150,6 +164,35 @@ export default function StudentDashboard() {
           ))
         )}
       </ScrollView>
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setIsModalVisible(true)}
+        accessibilityLabel="質問を投稿する"
+      >
+        <Ionicons name="pencil" size={24} color="#ffffff" />
+      </TouchableOpacity>
+
+      <Modal
+        visible={isModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <SafeAreaView style={styles.modalSafeArea}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>質問を作成</Text>
+            <TouchableOpacity onPress={() => setIsModalVisible(false)} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#0F172A" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            {profile ? (
+              <QuestionForm profile={profile} onQuestionPosted={handleQuestionPosted} />
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </View>
   )
 }
@@ -175,11 +218,51 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#2563EB',
+    color: '#f97316',
   },
   emptyText: {
     color: '#64748B',
     textAlign: 'center',
     marginTop: 40,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalSafeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalContent: {
+    padding: 20,
   },
 })

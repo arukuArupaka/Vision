@@ -1,5 +1,7 @@
+import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import { useRouter } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
     ActivityIndicator,
     ScrollView,
@@ -8,6 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getSupabase } from '@/lib/supabase/client'
 
@@ -26,85 +29,109 @@ interface ChatRoom {
   created_at: string
   high_school_user_id: string
   university_user_id: string
+  high_school_last_read_at?: string | null
+  university_last_read_at?: string | null
   other_user: Profile
   last_message?: {
     content: string
     created_at: string
+    image_url?: string | null
   }
+  unread_count?: number
 }
 
 export default function ChatListScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const loadData = async () => {
-      const supabase = getSupabase()
-      const { data } = await supabase.auth.getUser()
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    const supabase = getSupabase()
+    const { data } = await supabase.auth.getUser()
 
-      if (!data.user) {
-        router.replace('/auth/login')
-        return
-      }
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single()
-
-      if (!profileData) {
-        router.replace('/')
-        return
-      }
-
-      setProfile(profileData)
-
-      const { data: rooms } = await supabase
-        .from('chat_rooms')
-        .select('*')
-        .or(`high_school_user_id.eq.${data.user.id},university_user_id.eq.${data.user.id}`)
-        .order('created_at', { ascending: false })
-
-      if (rooms) {
-        const roomsWithUsers = await Promise.all(
-          rooms.map(async (room) => {
-            const otherUserId = profileData.role === 'high_school'
-              ? room.university_user_id
-              : room.high_school_user_id
-
-            const { data: otherUser } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', otherUserId)
-              .single()
-
-            const { data: lastMessage } = await supabase
-              .from('messages')
-              .select('content, created_at')
-              .eq('chat_room_id', room.id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .single()
-
-            return {
-              ...room,
-              other_user: otherUser,
-              last_message: lastMessage,
-            }
-          })
-        )
-
-        setChatRooms(roomsWithUsers.filter((r) => r.other_user))
-      }
-
-      setLoading(false)
+    if (!data.user) {
+      router.replace('/auth/login')
+      return
     }
 
-    loadData()
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single()
+
+    if (!profileData) {
+      router.replace('/')
+      return
+    }
+
+    setProfile(profileData)
+
+    const { data: rooms } = await supabase
+      .from('chat_rooms')
+      .select('*')
+      .or(`high_school_user_id.eq.${data.user.id},university_user_id.eq.${data.user.id}`)
+      .order('created_at', { ascending: false })
+
+    if (rooms) {
+      const roomsWithUsers = await Promise.all(
+        rooms.map(async (room) => {
+          const otherUserId = profileData.role === 'high_school'
+            ? room.university_user_id
+            : room.high_school_user_id
+
+          const { data: otherUser } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', otherUserId)
+            .single()
+
+          const { data: lastMessage } = await supabase
+            .from('messages')
+            .select('content, created_at, image_url')
+            .eq('chat_room_id', room.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+
+          const lastReadAt = profileData.role === 'high_school'
+            ? room.high_school_last_read_at
+            : room.university_last_read_at
+
+          const { count: unreadCount } = await supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('chat_room_id', room.id)
+            .neq('sender_id', data.user.id)
+            .gt('created_at', lastReadAt || '1970-01-01T00:00:00Z')
+
+          return {
+            ...room,
+            other_user: otherUser,
+            last_message: lastMessage,
+            unread_count: unreadCount || 0,
+          }
+        })
+      )
+
+      setChatRooms(roomsWithUsers.filter((r) => r.other_user))
+    }
+
+    setLoading(false)
   }, [router])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData()
+    }, [loadData])
+  )
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString)
@@ -124,7 +151,7 @@ export default function ChatListScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563EB" />
+        <ActivityIndicator size="large" color="#f97316" />
       </View>
     )
   }
@@ -133,8 +160,13 @@ export default function ChatListScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace(backUrl || '/')}> 
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity
+          onPress={() => router.replace(backUrl || '/')}
+          style={styles.backButton}
+          accessibilityLabel="戻る"
+        >
+          <Ionicons name="chevron-back" size={18} color="#7c2d12" />
           <Text style={styles.backText}>戻る</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>チャット</Text>
@@ -150,22 +182,45 @@ export default function ChatListScreen() {
               style={styles.card}
               onPress={() => router.push(`/chat/${room.id}`)}
             >
-              <Text style={styles.cardTitle}>{room.other_user?.nickname}</Text>
-              <Text style={styles.cardSubtitle}>
-                {room.other_user?.role === 'high_school'
-                  ? `${room.other_user?.school_name || ''} ${room.other_user?.grade || ''}`
-                  : `${room.other_user?.faculty || ''} ${room.other_user?.year || ''}`}
-              </Text>
-              {room.last_message ? (
-                <View style={styles.lastMessageRow}>
-                  <Text style={styles.lastMessage} numberOfLines={1}>
-                    {room.last_message.content}
-                  </Text>
-                  <Text style={styles.lastMessageTime}>
-                    {formatTime(room.last_message.created_at)}
-                  </Text>
-                </View>
-              ) : null}
+              {(() => {
+                const hasText = room.last_message?.content?.trim()
+                const hasImage = !!room.last_message?.image_url
+                const lastMessageText = hasText
+                  ? room.last_message?.content
+                  : hasImage
+                    ? '写真を送信しました'
+                    : ''
+
+                return (
+                  <>
+                    <Text style={styles.cardTitle}>{room.other_user?.nickname}</Text>
+                    <Text style={styles.cardSubtitle}>
+                      {room.other_user?.role === 'high_school'
+                        ? `${room.other_user?.school_name || ''} ${room.other_user?.grade || ''}`
+                        : `${room.other_user?.faculty || ''} ${room.other_user?.year || ''}`}
+                    </Text>
+                    {room.last_message ? (
+                      <View style={styles.lastMessageRow}>
+                        <Text style={styles.lastMessage} numberOfLines={1}>
+                          {lastMessageText}
+                        </Text>
+                        <View style={styles.lastMessageMeta}>
+                          <Text style={styles.lastMessageTime}>
+                            {formatTime(room.last_message.created_at)}
+                          </Text>
+                          {room.unread_count ? (
+                            <View style={styles.unreadBadge}>
+                              <Text style={styles.unreadBadgeText}>
+                                {room.unread_count}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : null}
+                  </>
+                )
+              })()}
             </TouchableOpacity>
           ))
         )}
@@ -186,7 +241,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -194,8 +248,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#FFEDD5',
+  },
   backText: {
-    color: '#2563EB',
+    color: '#7c2d12',
+    fontSize: 12,
+    fontWeight: '600',
   },
   headerTitle: {
     fontSize: 18,
@@ -234,6 +299,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  lastMessageMeta: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   lastMessage: {
     flex: 1,
     color: '#475569',
@@ -241,5 +310,19 @@ const styles = StyleSheet.create({
   lastMessageTime: {
     color: '#94A3B8',
     fontSize: 12,
+  },
+  unreadBadge: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f97316',
+  },
+  unreadBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 })

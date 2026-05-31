@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { AppHeader } from '@/components/app-header'
 import { QuestionCard } from '@/components/question-card'
+import { HASHTAG_OPTIONS } from '@/constants/hashtags'
 import { getSupabase } from '@/lib/supabase/client'
 
 interface Profile {
@@ -13,6 +14,7 @@ interface Profile {
   faculty: string | null
   year: string | null
   home_school: string | null
+  notification_hashtags: string[] | null
 }
 
 interface Answer {
@@ -32,6 +34,7 @@ interface Question {
   id: string
   title: string
   content: string
+  hashtags?: string[] | null
   created_at: string
   user_id: string
   profiles: {
@@ -47,6 +50,7 @@ export default function SenpaiDashboard() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null)
 
   const loadQuestions = async () => {
     const supabase = getSupabase()
@@ -64,7 +68,19 @@ export default function SenpaiDashboard() {
       )
       .order('created_at', { ascending: false })
 
-    setQuestions(questionsData || [])
+    const parsedQuestions = (questionsData || []).map((q: any) => {
+      let parsedHashtags = q.hashtags
+      if (typeof q.hashtags === 'string') {
+        try {
+          parsedHashtags = JSON.parse(q.hashtags)
+        } catch (e) {
+          parsedHashtags = []
+        }
+      }
+      return { ...q, hashtags: parsedHashtags }
+    })
+
+    setQuestions(parsedQuestions)
   }
 
   useEffect(() => {
@@ -105,10 +121,28 @@ export default function SenpaiDashboard() {
     await loadQuestions()
   }
 
+  const notificationTags = profile?.notification_hashtags || []
+  const matchedQuestions = notificationTags.length
+    ? questions.filter((question) =>
+        Array.isArray(question.hashtags) && question.hashtags.some((tag) => notificationTags.includes(tag))
+      )
+    : []
+  const orderedQuestions = notificationTags.length
+    ? [...questions].sort((left, right) => {
+        const leftMatched = Array.isArray(left.hashtags) && left.hashtags.some((tag) => notificationTags.includes(tag)) ? 1 : 0
+        const rightMatched = Array.isArray(right.hashtags) && right.hashtags.some((tag) => notificationTags.includes(tag)) ? 1 : 0
+        return rightMatched - leftMatched
+      })
+    : questions
+
+  const displayQuestions = selectedFilter
+    ? questions.filter((q) => Array.isArray(q.hashtags) && q.hashtags.includes(selectedFilter))
+    : orderedQuestions
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#0EA5E9" />
+        <ActivityIndicator size="large" color="#f97316" />
       </View>
     )
   }
@@ -119,27 +153,77 @@ export default function SenpaiDashboard() {
         title="キャンパス・トーク"
         subtitle="高校生の「ギモン」に大学生の「リアル」を"
         variant="secondary"
+        showBack
+        onBackPress={() => router.back()}
       />
 
       <ScrollView contentContainerStyle={styles.container}>
         {profile ? (
-          <View style={styles.profileCard}>
+          <TouchableOpacity
+            style={styles.profileCard}
+            onPress={() => router.push('/profile/setup?mode=edit')}
+            accessibilityLabel="プロフィールを編集"
+          >
             <Text style={styles.sectionTitle}>あなたのプロフィール</Text>
             <Text style={styles.profileText}>{profile.faculty} {profile.year}</Text>
             {profile.home_school ? (
               <Text style={styles.profileSubText}>出身: {profile.home_school}</Text>
             ) : null}
+            {notificationTags.length ? (
+              <Text style={styles.profileSubText}>
+                通知タグ: {notificationTags.map((tag) => `#${tag}`).join(' ・ ')}
+              </Text>
+            ) : null}
+          </TouchableOpacity>
+        ) : null}
+
+        {notificationTags.length ? (
+          <View style={styles.matchCard}>
+            <Text style={styles.sectionTitle}>通知対象の質問</Text>
+            <Text style={styles.matchDescription}>
+              {matchedQuestions.length}件があなたのタグ設定に一致しています
+            </Text>
           </View>
         ) : null}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>質問を探す</Text>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContainer}
+        >
+          <TouchableOpacity
+            style={[styles.filterChip, selectedFilter === null && styles.filterChipSelected]}
+            onPress={() => setSelectedFilter(null)}
+          >
+            <Text style={[styles.filterText, selectedFilter === null && styles.filterTextSelected]}>
+              すべて
+            </Text>
+          </TouchableOpacity>
+          {HASHTAG_OPTIONS.map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.filterChip, selectedFilter === tag && styles.filterChipSelected]}
+              onPress={() => setSelectedFilter(tag)}
+            >
+              <Text style={[styles.filterText, selectedFilter === tag && styles.filterTextSelected]}>
+                #{tag}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>質問に回答する</Text>
         </View>
 
-        {questions.length === 0 ? (
-          <Text style={styles.emptyText}>まだ質問がありません。高校生からの質問を待ちましょう。</Text>
+        {displayQuestions.length === 0 ? (
+          <Text style={styles.emptyText}>該当する質問がありません。</Text>
         ) : (
-          questions.map((question) => (
+          displayQuestions.map((question) => (
             <QuestionCard
               key={question.id}
               question={question}
@@ -175,13 +259,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0EA5E9',
+    color: '#f97316',
   },
   profileCard: {
-    backgroundColor: '#F0F9FF',
+    backgroundColor: '#FFF7ED',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: '#FED7AA',
     padding: 16,
     marginBottom: 12,
   },
@@ -194,9 +278,42 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontSize: 12,
   },
+  matchCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+  },
+  matchDescription: {
+    marginTop: 4,
+    color: '#475569',
+    fontSize: 12,
+  },
   emptyText: {
     color: '#64748B',
     textAlign: 'center',
     marginTop: 40,
+  },
+  filterContainer: {
+    gap: 8,
+    paddingBottom: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+  },
+  filterChipSelected: {
+    backgroundColor: '#f97316',
+  },
+  filterText: {
+    color: '#475569',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterTextSelected: {
+    color: '#ffffff',
   },
 })

@@ -41,7 +41,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#2563EB" />
+      <ActivityIndicator size="large" color="#f97316" />
       <Text style={styles.text}>認証処理中...</Text>
     </View>
   )

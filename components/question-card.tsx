@@ -28,6 +28,7 @@ interface Question {
   id: string
   title: string
   content: string
+  hashtags?: string[] | null
   created_at: string
   user_id: string
   profiles: {
@@ -128,6 +129,15 @@ export function QuestionCard({
       </View>
 
       <Text style={styles.content}>{question.content}</Text>
+      {Array.isArray(question.hashtags) && question.hashtags.length > 0 ? (
+        <View style={styles.hashtagList}>
+          {question.hashtags.map((tag) => (
+            <View key={tag} style={styles.hashtagChip}>
+              <Text style={styles.hashtagText}>#{tag}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
       <Text style={styles.meta}>
         {question.profiles?.nickname} ・ {question.profiles?.school_name || ''} {question.profiles?.grade || ''}
       </Text>
@@ -164,14 +174,16 @@ export function QuestionCard({
               <Text style={styles.answerMeta}>
                 {item.profiles?.nickname} ・ {item.profiles?.faculty || ''} {item.profiles?.year || ''}
               </Text>
-              {!isSenpai && isOwner ? (
-                <TouchableOpacity
-                  style={styles.chatButton}
-                  onPress={() => handleStartChat(item.user_id)}
-                >
-                  <Text style={styles.chatButtonText}>チャット</Text>
-                </TouchableOpacity>
-              ) : null}
+              <View style={styles.answerActions}>
+                {!isSenpai && isOwner ? (
+                  <TouchableOpacity
+                    style={styles.chatButton}
+                    onPress={() => handleStartChat(item.user_id)}
+                  >
+                    <Text style={styles.chatButtonText}>チャット</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
@@ -207,6 +219,23 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: '#334155',
   },
+  hashtagList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  hashtagChip: {
+    backgroundColor: '#FFEDD5',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  hashtagText: {
+    color: '#c2410c',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   meta: {
     marginTop: 6,
     fontSize: 12,
@@ -222,7 +251,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#CBD5F5',
+    borderColor: '#FED7AA',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -232,7 +261,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   primaryButton: {
-    backgroundColor: '#0EA5E9',
+    backgroundColor: '#f97316',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
@@ -264,7 +293,7 @@ const styles = StyleSheet.create({
   chatButton: {
     alignSelf: 'flex-end',
     marginTop: 8,
-    backgroundColor: '#0EA5E9',
+    backgroundColor: '#f97316',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -273,5 +302,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  answerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 8,
   },
 })

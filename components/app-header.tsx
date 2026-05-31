@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getSupabase } from '@/lib/supabase/client'
 
@@ -8,21 +9,68 @@ interface AppHeaderProps {
   title: string
   subtitle: string
   variant?: 'primary' | 'secondary'
+  showBack?: boolean
+  onBackPress?: () => void
 }
 
-export function AppHeader({ title, subtitle, variant = 'primary' }: AppHeaderProps) {
+export function AppHeader({
+  title,
+  subtitle,
+  variant = 'primary',
+  showBack = false,
+  onBackPress,
+}: AppHeaderProps) {
   const router = useRouter()
-  const bgColor = variant === 'primary' ? '#2563EB' : '#0EA5E9'
+  const insets = useSafeAreaInsets()
+  const bgColor = variant === 'primary' ? '#f97316' : '#fb923c'
+
+  const handleBack = () => {
+    if (onBackPress) {
+      onBackPress()
+      return
+    }
+    router.back()
+  }
 
   const handleLogout = async () => {
-    const supabase = getSupabase()
-    await supabase.auth.signOut()
-    router.replace('/')
+    Alert.alert(
+      'ログアウト',
+      'ログアウトしてもよろしいですか？',
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+        {
+          text: 'ログアウト',
+          style: 'destructive',
+          onPress: async () => {
+            const supabase = getSupabase()
+            await supabase.auth.signOut()
+            router.replace('/')
+          },
+        },
+      ]
+    )
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: bgColor }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: bgColor, paddingTop: insets.top + 12 },
+      ]}
+    >
       <View style={styles.left}>
+        {showBack ? (
+          <TouchableOpacity
+            onPress={handleBack}
+            style={styles.backButton}
+            accessibilityLabel="戻る"
+          >
+            <Ionicons name="chevron-back" size={18} color="#ffffff" />
+          </TouchableOpacity>
+        ) : null}
         <Ionicons name="chatbubble-ellipses" size={22} color="#ffffff" />
         <View>
           <Text style={styles.title}>{title}</Text>
@@ -52,7 +100,7 @@ export function AppHeader({ title, subtitle, variant = 'primary' }: AppHeaderPro
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -61,6 +109,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  backButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   title: {
     color: '#ffffff',

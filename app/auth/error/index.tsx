@@ -24,7 +24,7 @@ export default function AuthErrorScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#f97316',
     justifyContent: 'center',
     padding: 24,
   },
@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#f97316',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',

@@ -1,17 +1,22 @@
+import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 
 import { getSupabase } from '@/lib/supabase/client'
+import { HASHTAG_OPTIONS } from '../constants/hashtags'
+import { HashtagSelector } from './hashtag-selector'
 
 interface Profile {
   id: string
+  role: string
   nickname: string
   school_name: string | null
   grade: string | null
@@ -23,8 +28,10 @@ interface QuestionFormProps {
 }
 
 export function QuestionForm({ profile, onQuestionPosted }: QuestionFormProps) {
+  const router = useRouter()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [hashtags, setHashtags] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async () => {
@@ -33,35 +40,61 @@ export function QuestionForm({ profile, onQuestionPosted }: QuestionFormProps) {
     setLoading(true)
     const supabase = getSupabase()
 
-    const { data, error } = await supabase
-      .from('questions')
-      .insert({
-        user_id: profile.id,
-        title: title.trim(),
-        content: content.trim(),
-      })
-      .select(
-        `
-          *,
-          profiles!questions_user_id_fkey (nickname, school_name, grade)
-        `
-      )
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('questions')
+        .insert({
+          user_id: profile.id,
+          title: title.trim(),
+          content: content.trim(),
+          hashtags,
+        })
+        .select(
+          `
+            *,
+            profiles!questions_user_id_fkey (nickname, school_name, grade)
+          `
+        )
+        .single()
 
-    if (!error && data) {
-      onQuestionPosted({ ...data, answers: [] })
-      setTitle('')
-      setContent('')
+      if (error) {
+        console.error('Supabase insert error:', error)
+        Alert.alert('送信エラー', 'ネットワークエラーが発生しました。後でもう一度試してください。')
+        return
+      }
+
+      if (data) {
+        let parsedHashtags = data.hashtags
+        if (typeof data.hashtags === 'string') {
+          try {
+            parsedHashtags = JSON.parse(data.hashtags)
+          } catch (e) {
+            parsedHashtags = []
+          }
+        }
+        
+        onQuestionPosted({ ...data, hashtags: parsedHashtags, answers: [] })
+        setTitle('')
+        setContent('')
+        setHashtags([])
+      }
+    } catch (err) {
+      console.error('Network error while posting question:', err)
+      Alert.alert('送信できません', 'ネットワークに接続できません。接続を確認してください。')
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>先輩に質問してみよう！</Text>
 
-      <View style={styles.profileRow}>
+      <TouchableOpacity
+        style={styles.profileRow}
+        onPress={() => router.push('/profile/setup?mode=edit')}
+        accessibilityLabel="プロフィールを編集"
+      >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{profile.nickname?.slice(0, 1) || '？'}</Text>
         </View>
@@ -71,7 +104,7 @@ export function QuestionForm({ profile, onQuestionPosted }: QuestionFormProps) {
             {profile.school_name} ({profile.grade})
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
       <Text style={styles.label}>質問のタイトル</Text>
       <TextInput
@@ -88,6 +121,14 @@ export function QuestionForm({ profile, onQuestionPosted }: QuestionFormProps) {
         onChangeText={setContent}
         style={[styles.input, styles.textarea]}
         multiline
+      />
+
+      <HashtagSelector
+        title="ハッシュタグ"
+        description="質問に合うタグを選ぶと、興味のある大学生に届きやすくなります"
+        options={HASHTAG_OPTIONS}
+        value={hashtags}
+        onChange={setHashtags}
       />
 
       <TouchableOpacity
@@ -116,14 +157,14 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#2563EB',
+    color: '#f97316',
   },
   profileRow: {
     marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#FFEDD5',
     borderRadius: 12,
     padding: 10,
   },
@@ -131,16 +172,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: '#FFEDD5',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#2563EB',
+    color: '#f97316',
     fontWeight: '700',
   },
   profileName: {
-    color: '#1E3A8A',
+    color: '#7c2d12',
     fontWeight: '600',
   },
   profileMeta: {
@@ -154,7 +195,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#CBD5F5',
+    borderColor: '#FED7AA',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -164,7 +205,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#f97316',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',

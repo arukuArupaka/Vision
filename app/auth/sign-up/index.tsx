@@ -13,7 +13,14 @@ export default function SignUpScreen() {
     | 'university'
     | undefined
 
+  const isHighSchool = role === 'high_school'
+  const isUniversity = role === 'university'
+  const universityDomain = 'ed.ritsumei.ac.jp'
+  const highSchoolDomains = ['ujc.ritsumei.ac.jp', 'mrc.ritsumei.ac.jp', 'fkc.ritsumei.ac.jp']
+
   const [email, setEmail] = useState('')
+  const [emailLocal, setEmailLocal] = useState('')
+  const [selectedHighSchoolDomain, setSelectedHighSchoolDomain] = useState(highSchoolDomains[0])
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -23,10 +30,25 @@ export default function SignUpScreen() {
     return null
   }
 
-  const isHighSchool = role === 'high_school'
-
   const handleSubmit = async () => {
-    if (!email || !password) return
+    const trimmedLocal = emailLocal.trim()
+    const trimmedEmail = email.trim()
+
+    if (isUniversity) {
+      if (!trimmedLocal || trimmedLocal.includes('@')) {
+        setError('大学のメールアドレスの@より前だけを入力してください')
+        return
+      }
+    } else if (isHighSchool) {
+      if (!trimmedLocal || trimmedLocal.includes('@')) {
+        setError('高校のメールアドレスの@より前だけを入力してください')
+        return
+      }
+    } else if (!trimmedEmail) {
+      return
+    }
+
+    if (!password) return
 
     setLoading(true)
     setError('')
@@ -36,8 +58,14 @@ export default function SignUpScreen() {
       queryParams: { role },
     })
 
+    const finalEmail = isUniversity
+      ? `${trimmedLocal}@${universityDomain}`
+      : isHighSchool
+      ? `${trimmedLocal}@${selectedHighSchoolDomain}`
+      : trimmedEmail
+
     const { error: signUpError } = await supabase.auth.signUp({
-      email,
+      email: finalEmail,
       password,
       options: {
         emailRedirectTo,
@@ -56,7 +84,7 @@ export default function SignUpScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: isHighSchool ? '#2563EB' : '#0EA5E9' }]}>
+    <View style={[styles.container, { backgroundColor: isHighSchool ? '#f97316' : '#fb923c' }]}>
       <View style={styles.card}>
         <Text style={styles.title}>新規登録</Text>
         <Text style={styles.subtitle}>{isHighSchool ? '高校生' : '大学生'}として登録</Text>
@@ -64,14 +92,61 @@ export default function SignUpScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <Text style={styles.label}>メールアドレス</Text>
-        <TextInput
-          style={styles.input}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="example@email.com"
-        />
+        {isUniversity ? (
+          <View style={styles.emailRow}>
+            <TextInput
+              style={[styles.input, styles.emailInput]}
+              autoCapitalize="none"
+              value={emailLocal}
+              onChangeText={setEmailLocal}
+              placeholder="username"
+            />
+            <Text style={styles.emailSuffix}>@{universityDomain}</Text>
+          </View>
+        ) : isHighSchool ? (
+          <View style={styles.highSchoolEmailContainer}>
+            <View style={styles.emailRow}>
+              <TextInput
+                style={[styles.input, styles.emailInput]}
+                autoCapitalize="none"
+                value={emailLocal}
+                onChangeText={setEmailLocal}
+                placeholder="username"
+              />
+              <Text style={styles.emailSuffix}>@</Text>
+            </View>
+            <View style={styles.domainSelector}>
+              {highSchoolDomains.map((domain) => (
+                <TouchableOpacity
+                  key={domain}
+                  style={[
+                    styles.domainOption,
+                    selectedHighSchoolDomain === domain && styles.domainOptionSelected,
+                  ]}
+                  onPress={() => setSelectedHighSchoolDomain(domain)}
+                >
+                  <Text
+                    style={[
+                      styles.domainOptionText,
+                      selectedHighSchoolDomain === domain && styles.domainOptionTextSelected,
+                    ]}
+                  >
+                    {domain}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <TextInput
+            style={styles.input}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="example@email.com"
+          />
+        )}
 
         <Text style={styles.label}>パスワード</Text>
         <TextInput
@@ -126,18 +201,31 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#CBD5F5',
+    borderColor: '#FED7AA',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 8,
+  },
+  emailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emailInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  emailSuffix: {
+    marginLeft: 8,
+    color: '#0F172A',
   },
   errorText: {
     color: '#EF4444',
     marginBottom: 8,
   },
   primaryButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#f97316',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
@@ -149,7 +237,34 @@ const styles = StyleSheet.create({
   },
   linkText: {
     marginTop: 12,
-    color: '#2563EB',
+    color: '#f97316',
     textAlign: 'center',
+  },
+  highSchoolEmailContainer: {
+    marginBottom: 8,
+  },
+  domainSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  domainOption: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  domainOptionSelected: {
+    backgroundColor: '#f97316',
+    borderColor: '#f97316',
+  },
+  domainOptionText: {
+    fontSize: 12,
+    color: '#0F172A',
+  },
+  domainOptionTextSelected: {
+    color: '#ffffff',
   },
 })
