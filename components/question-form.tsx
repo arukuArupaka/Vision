@@ -1,15 +1,16 @@
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import {
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 
+import { containsInappropriateContent } from '@/lib/moderation'
 import { getSupabase } from '@/lib/supabase/client'
 import { HASHTAG_OPTIONS } from '../constants/hashtags'
 import { HashtagSelector } from './hashtag-selector'
@@ -35,7 +36,15 @@ export function QuestionForm({ profile, onQuestionPosted }: QuestionFormProps) {
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async () => {
-    if (!title.trim() || !content.trim()) return
+    const trimmedTitle = title.trim()
+    const trimmedContent = content.trim()
+
+    if (!trimmedTitle || !trimmedContent) return
+
+    if (containsInappropriateContent(`${trimmedTitle} ${trimmedContent}`)) {
+      Alert.alert('送信できません', '不適切な表現が含まれているため、投稿できません。')
+      return
+    }
 
     setLoading(true)
     const supabase = getSupabase()
@@ -45,8 +54,8 @@ export function QuestionForm({ profile, onQuestionPosted }: QuestionFormProps) {
         .from('questions')
         .insert({
           user_id: profile.id,
-          title: title.trim(),
-          content: content.trim(),
+          title: trimmedTitle,
+          content: trimmedContent,
           hashtags,
         })
         .select(

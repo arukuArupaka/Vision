@@ -4,18 +4,20 @@ import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { blockUser, containsInappropriateContent, reportContent } from '@/lib/moderation'
 import { getSupabase } from '@/lib/supabase/client'
 
 interface Profile {
@@ -64,6 +66,10 @@ export default function ChatRoomScreen() {
   const validateMessage = (text: string) => {
     const trimmed = text.trim()
     if (!trimmed) return null
+
+    if (containsInappropriateContent(trimmed)) {
+      return '不適切な表現が含まれているため送信できません'
+    }
 
     const hasUrl = /(https?:\/\/|www\.)/i.test(trimmed)
     if (hasUrl) return 'この投稿はできません'
@@ -248,12 +254,8 @@ export default function ChatRoomScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (!permission.granted) return
 
-    const mediaTypes = ImagePicker.MediaType?.Images
-      ? [ImagePicker.MediaType.Images]
-      : ImagePicker.MediaTypeOptions.Images
-
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes,
+      mediaTypes: ['images' as const],
       quality: 0.8,
     })
 
@@ -322,6 +324,103 @@ export default function ChatRoomScreen() {
     return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
   }
 
+  const handleOptions = () => {
+    Alert.alert(
+      'オプション',
+      `${otherUser?.nickname || 'このユーザー'}に対する操作を選択してください`,
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+        {
+          text: 'ブロックする',
+          style: 'destructive',
+          onPress: handleBlockUser,
+        },
+        {
+          text: '問題を報告する',
+          style: 'default',
+          onPress: handleReportUser,
+        },
+      ]
+    )
+  }
+
+  const handleBlockUser = async () => {
+    if (!profile || !otherUser) return
+    Alert.alert(
+      'ブロックの確認',
+      'このユーザーをブロックしますか？ブロックすると相手の投稿とメッセージが画面から消え、運営へ通知されます。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'ブロック',
+          style: 'destructive',
+          onPress: async () => {
+            const supabase = getSupabase()
+            const blocked = await blockUser({
+              supabase,
+              blockerId: profile.id,
+              blockedId: otherUser.id,
+            })
+
+            await reportContent({
+              supabase,
+              reporterId: profile.id,
+              reportedUserId: otherUser.id,
+              reportType: 'user_block',
+              reason: 'ユーザーをブロックしたため運営へ通知',
+              contentPreview: `${otherUser.nickname}のブロック`,
+            })
+
+            if (blocked) {
+              Alert.alert('完了', 'ユーザーをブロックしました。運営へ通知済みです。')
+              router.replace('/chat')
+              return
+            }
+
+            Alert.alert('エラー', 'ブロックに失敗しました。もう一度お試しください。')
+          },
+        },
+      ]
+    )
+  }
+
+  const handleReportUser = () => {
+    if (!profile || !otherUser) return
+    Alert.prompt(
+      '問題を報告',
+      '報告の理由を入力してください。24時間以内に運営が確認して対応します。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '送信',
+          onPress: async (reason?: string | null) => {
+            const cleanReason = reason?.trim() || ''
+            if (!cleanReason) return
+            const supabase = getSupabase()
+            const success = await reportContent({
+              supabase,
+              reporterId: profile.id,
+              reportedUserId: otherUser.id,
+              reportType: 'chat_user',
+              reason: cleanReason,
+              contentPreview: `chat-user:${otherUser.nickname}`,
+            })
+
+            Alert.alert(
+              success ? 'ご報告ありがとうございます' : '送信エラー',
+              success
+                ? '運営へ通知しました。24時間以内に確認・対応します。'
+                : '報告の送信に失敗しました。もう一度お試しください。'
+            )
+          },
+        },
+      ]
+    )
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -345,6 +444,10 @@ export default function ChatRoomScreen() {
           <Text style={styles.backText}>戻る</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{otherUser?.nickname}</Text>
+        <View style={styles.headerSpacer} />
+        <TouchableOpacity onPress={handleOptions} accessibilityLabel="オプション">
+          <Ionicons name="ellipsis-vertical" size={24} color="#0F172A" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.messagesContainer}>
@@ -443,6 +546,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#0F172A',
+  },
+  headerSpacer: {
+    flex: 1,
   },
   messagesContainer: {
     padding: 20,

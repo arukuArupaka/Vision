@@ -3,6 +3,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 
+import { EulaConsent } from '@/components/ugc/eula-consent'
+import { useEulaConsent } from '@/hooks/use-eula-consent'
 import { getSupabase } from '@/lib/supabase/client'
 
 export default function SignUpScreen() {
@@ -16,14 +18,13 @@ export default function SignUpScreen() {
   const isHighSchool = role === 'high_school'
   const isUniversity = role === 'university'
   const universityDomain = 'ed.ritsumei.ac.jp'
-  const highSchoolDomains = ['ujc.ritsumei.ac.jp', 'mrc.ritsumei.ac.jp', 'fkc.ritsumei.ac.jp']
 
   const [email, setEmail] = useState('')
   const [emailLocal, setEmailLocal] = useState('')
-  const [selectedHighSchoolDomain, setSelectedHighSchoolDomain] = useState(highSchoolDomains[0])
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { agreed, setAgreed, validateAgreement } = useEulaConsent(false)
 
   if (!role) {
     router.replace('/')
@@ -39,16 +40,17 @@ export default function SignUpScreen() {
         setError('大学のメールアドレスの@より前だけを入力してください')
         return
       }
-    } else if (isHighSchool) {
-      if (!trimmedLocal || trimmedLocal.includes('@')) {
-        setError('高校のメールアドレスの@より前だけを入力してください')
-        return
-      }
     } else if (!trimmedEmail) {
       return
     }
 
     if (!password) return
+
+    const agreementError = validateAgreement()
+    if (agreementError) {
+      setError(agreementError)
+      return
+    }
 
     setLoading(true)
     setError('')
@@ -60,8 +62,6 @@ export default function SignUpScreen() {
 
     const finalEmail = isUniversity
       ? `${trimmedLocal}@${universityDomain}`
-      : isHighSchool
-      ? `${trimmedLocal}@${selectedHighSchoolDomain}`
       : trimmedEmail
 
     const { error: signUpError } = await supabase.auth.signUp({
@@ -103,40 +103,6 @@ export default function SignUpScreen() {
             />
             <Text style={styles.emailSuffix}>@{universityDomain}</Text>
           </View>
-        ) : isHighSchool ? (
-          <View style={styles.highSchoolEmailContainer}>
-            <View style={styles.emailRow}>
-              <TextInput
-                style={[styles.input, styles.emailInput]}
-                autoCapitalize="none"
-                value={emailLocal}
-                onChangeText={setEmailLocal}
-                placeholder="username"
-              />
-              <Text style={styles.emailSuffix}>@</Text>
-            </View>
-            <View style={styles.domainSelector}>
-              {highSchoolDomains.map((domain) => (
-                <TouchableOpacity
-                  key={domain}
-                  style={[
-                    styles.domainOption,
-                    selectedHighSchoolDomain === domain && styles.domainOptionSelected,
-                  ]}
-                  onPress={() => setSelectedHighSchoolDomain(domain)}
-                >
-                  <Text
-                    style={[
-                      styles.domainOptionText,
-                      selectedHighSchoolDomain === domain && styles.domainOptionTextSelected,
-                    ]}
-                  >
-                    {domain}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
         ) : (
           <TextInput
             style={styles.input}
@@ -157,7 +123,19 @@ export default function SignUpScreen() {
           placeholder="6文字以上"
         />
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
+        <EulaConsent
+          agreed={agreed}
+          onChange={setAgreed}
+          onOpenEula={() =>
+            router.push({
+              pathname: '/auth/eula/index',
+              params: { returnTo: `/auth/sign-up?role=${role}` },
+            })
+          }
+          helperText="同意しないと登録に進めません。"
+        />
+
+        <TouchableOpacity style={[styles.primaryButton, !agreed && styles.primaryButtonDisabled]} onPress={handleSubmit} disabled={loading || !agreed}>
           {loading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
@@ -239,6 +217,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#f97316',
     textAlign: 'center',
+  },
+  primaryButtonDisabled: {
+    opacity: 0.5,
   },
   highSchoolEmailContainer: {
     marginBottom: 8,

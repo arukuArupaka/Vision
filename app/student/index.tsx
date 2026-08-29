@@ -6,6 +6,7 @@ import { ActivityIndicator, Modal, SafeAreaView, ScrollView, StyleSheet, Text, T
 import { AppHeader } from '@/components/app-header'
 import { QuestionCard } from '@/components/question-card'
 import { QuestionForm } from '@/components/question-form'
+import { containsInappropriateContent, getBlockedUserIds } from '@/lib/moderation'
 import { getSupabase } from '@/lib/supabase/client'
 
 interface Profile {
@@ -51,7 +52,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [isModalVisible, setIsModalVisible] = useState(false)
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (userId?: string) => {
     const supabase = getSupabase()
     const { data: questionsData } = await supabase
       .from('questions')
@@ -67,17 +68,27 @@ export default function StudentDashboard() {
       )
       .order('created_at', { ascending: false })
 
-    const parsedQuestions = (questionsData || []).map((q: any) => {
-      let parsedHashtags = q.hashtags
-      if (typeof q.hashtags === 'string') {
-        try {
-          parsedHashtags = JSON.parse(q.hashtags)
-        } catch (e) {
-          parsedHashtags = []
+    const blockedUserIds = await getBlockedUserIds(supabase, userId ?? profile?.id)
+
+    const parsedQuestions = (questionsData || [])
+      .filter((q: any) => {
+        if (blockedUserIds.has(q.user_id)) return false
+        const textToCheck = `${q.title || ''} ${q.content || ''}`
+        return !containsInappropriateContent(textToCheck)
+      })
+      .map((q: any) => {
+        let parsedHashtags = q.hashtags
+        if (typeof q.hashtags === 'string') {
+          try {
+            parsedHashtags = JSON.parse(q.hashtags)
+          } catch (e) {
+            parsedHashtags = []
+          }
         }
-      }
-      return { ...q, hashtags: parsedHashtags }
-    })
+
+        const safeAnswers = (q.answers || []).filter((answer: any) => !blockedUserIds.has(answer.user_id))
+        return { ...q, hashtags: parsedHashtags, answers: safeAnswers }
+      })
 
     setQuestions(parsedQuestions)
   }
@@ -109,7 +120,7 @@ export default function StudentDashboard() {
       }
 
       setProfile(profileData)
-      await loadQuestions()
+      await loadQuestions(profileData.id)
       setLoading(false)
     }
 
@@ -119,6 +130,16 @@ export default function StudentDashboard() {
   const handleQuestionPosted = (newQuestion: Question) => {
     setQuestions((prev) => [newQuestion, ...prev])
     setIsModalVisible(false)
+  }
+
+  const refreshQuestions = async () => {
+    if (profile?.id) {
+      await loadQuestions(profile.id)
+    }
+  }
+
+  const handleUserBlocked = (blockedUserId: string) => {
+    setQuestions((current) => current.filter((question) => question.user_id !== blockedUserId))
   }
 
   const handleDeleteQuestion = async (questionId: string) => {
@@ -159,6 +180,8 @@ export default function StudentDashboard() {
               question={question}
               currentUserId={profile?.id}
               onDelete={handleDeleteQuestion}
+              onAnswerPosted={refreshQuestions}
+              onUserBlocked={handleUserBlocked}
               variant="student"
             />
           ))

@@ -2,7 +2,7 @@
   "expo": {
     "name": "VisiOn",
     "slug": "VisiOn",
-    "version": "1.0.0",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.jpeg",
     "scheme": "vision",
@@ -11,11 +11,17 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Allow access to your photos to share images in chat."
-      }
+        "NSPhotoLibraryUsageDescription": "Allow access to your photos to share images in chat.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.lpjgdgwm.VisiOn",
+      "buildNumber": "5"
     },
     "android": {
-      "permissions": ["READ_MEDIA_IMAGES", "READ_EXTERNAL_STORAGE"],
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/app-icon.jpeg",
@@ -47,6 +53,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "19422ea2-9826-4e70-8cc3-c4b7bfd275f7"
+      }
     }
   }
 }

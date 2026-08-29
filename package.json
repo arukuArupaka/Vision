@@ -1,8 +1,9 @@
 {
   "name": "vision",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "scripts": {
+    "dev": "expo start --tunnel",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",

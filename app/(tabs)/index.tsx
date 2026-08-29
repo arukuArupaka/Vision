@@ -35,7 +35,7 @@ export default function WelcomeScreen() {
   }, [router]);
 
   const handleRoleSelect = (role: 'high_school' | 'university') => {
-    router.push(`/auth/sign-up?role=${role}`);
+    router.push(`/auth/eula?returnTo=${encodeURIComponent(`/auth/sign-up?role=${role}`)}`);
   };
 
   if (checking) {
@@ -72,7 +72,7 @@ export default function WelcomeScreen() {
           <Text style={styles.roleDescription}>高校生のギモンに答えてあげたい方</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/auth/login')}>
+        <TouchableOpacity onPress={() => router.push(`/auth/eula?returnTo=${encodeURIComponent('/auth/login')}`)}>
           <Text style={styles.loginLinkText}>すでにアカウントをお持ちの方はこちら</Text>
         </TouchableOpacity>
       </View>

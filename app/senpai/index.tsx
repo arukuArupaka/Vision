@@ -5,6 +5,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { AppHeader } from '@/components/app-header'
 import { QuestionCard } from '@/components/question-card'
 import { HASHTAG_OPTIONS } from '@/constants/hashtags'
+import { containsInappropriateContent, getBlockedUserIds } from '@/lib/moderation'
 import { getSupabase } from '@/lib/supabase/client'
 
 interface Profile {
@@ -52,7 +53,7 @@ export default function SenpaiDashboard() {
   const [loading, setLoading] = useState(true)
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null)
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (userId?: string) => {
     const supabase = getSupabase()
     const { data: questionsData } = await supabase
       .from('questions')
@@ -68,17 +69,27 @@ export default function SenpaiDashboard() {
       )
       .order('created_at', { ascending: false })
 
-    const parsedQuestions = (questionsData || []).map((q: any) => {
-      let parsedHashtags = q.hashtags
-      if (typeof q.hashtags === 'string') {
-        try {
-          parsedHashtags = JSON.parse(q.hashtags)
-        } catch (e) {
-          parsedHashtags = []
+    const blockedUserIds = await getBlockedUserIds(supabase, userId ?? profile?.id)
+
+    const parsedQuestions = (questionsData || [])
+      .filter((q: any) => {
+        if (blockedUserIds.has(q.user_id)) return false
+        const textToCheck = `${q.title || ''} ${q.content || ''}`
+        return !containsInappropriateContent(textToCheck)
+      })
+      .map((q: any) => {
+        let parsedHashtags = q.hashtags
+        if (typeof q.hashtags === 'string') {
+          try {
+            parsedHashtags = JSON.parse(q.hashtags)
+          } catch (e) {
+            parsedHashtags = []
+          }
         }
-      }
-      return { ...q, hashtags: parsedHashtags }
-    })
+
+        const safeAnswers = (q.answers || []).filter((answer: any) => !blockedUserIds.has(answer.user_id))
+        return { ...q, hashtags: parsedHashtags, answers: safeAnswers }
+      })
 
     setQuestions(parsedQuestions)
   }
@@ -110,7 +121,7 @@ export default function SenpaiDashboard() {
       }
 
       setProfile(profileData)
-      await loadQuestions()
+      await loadQuestions(profileData.id)
       setLoading(false)
     }
 
@@ -118,7 +129,15 @@ export default function SenpaiDashboard() {
   }, [router])
 
   const handleAnswerPosted = async () => {
-    await loadQuestions()
+    await loadQuestions(profile?.id)
+  }
+
+  const refreshQuestions = async () => {
+    await handleAnswerPosted()
+  }
+
+  const handleUserBlocked = (blockedUserId: string) => {
+    setQuestions((current) => current.filter((question) => question.user_id !== blockedUserId))
   }
 
   const notificationTags = profile?.notification_hashtags || []
@@ -228,8 +247,9 @@ export default function SenpaiDashboard() {
               key={question.id}
               question={question}
               currentUserId={profile?.id}
-              onAnswerPosted={handleAnswerPosted}
+              onAnswerPosted={refreshQuestions}
               variant="senpai"
+              onUserBlocked={handleUserBlocked}
             />
           ))
         )}

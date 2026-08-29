@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import {
     ActivityIndicator,
+    Alert,
     StyleSheet,
     Text,
     TextInput,
@@ -9,6 +10,9 @@ import {
     View,
 } from 'react-native'
 
+  import { ContentModerationSheet } from '@/components/ugc/content-moderation-sheet'
+import { useContentModeration } from '@/hooks/use-content-moderation'
+import { containsInappropriateContent } from '@/lib/moderation'
 import { getSupabase } from '@/lib/supabase/client'
 
 interface Answer {
@@ -45,6 +49,7 @@ interface QuestionCardProps {
   variant?: 'student' | 'senpai'
   onDelete?: (id: string) => void
   onAnswerPosted?: () => void
+  onUserBlocked?: (userId: string) => void
 }
 
 export function QuestionCard({
@@ -53,10 +58,17 @@ export function QuestionCard({
   variant = 'student',
   onDelete,
   onAnswerPosted,
+  onUserBlocked,
 }: QuestionCardProps) {
   const router = useRouter()
   const [answer, setAnswer] = useState('')
   const [sending, setSending] = useState(false)
+  const moderation = useContentModeration({
+    currentUserId,
+    onBlocked: (blockedUserId) => {
+      onUserBlocked?.(blockedUserId)
+    },
+  })
 
   const handleStartChat = async (universityUserId: string) => {
     if (!currentUserId) return
@@ -91,8 +103,13 @@ export function QuestionCard({
 
   const handleAnswer = async () => {
     if (!currentUserId || !answer.trim()) return
-    setSending(true)
 
+    if (containsInappropriateContent(answer.trim())) {
+      Alert.alert('送信できません', '不適切な表現が含まれているため、回答を送信できません。')
+      return
+    }
+
+    setSending(true)
     const supabase = getSupabase()
     await supabase.from('answers').insert({
       content: answer.trim(),
@@ -117,15 +134,35 @@ export function QuestionCard({
   const isOwner = currentUserId === question.user_id
   const isSenpai = variant === 'senpai'
 
+  const moderationTarget = {
+    targetId: question.id,
+    targetUserId: question.user_id,
+    targetLabel: question.profiles?.nickname || '投稿者',
+    contentPreview: `${question.title} ${question.content}`,
+    reportType: 'question',
+  }
+
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>{question.title}</Text>
-        {isOwner && onDelete ? (
-          <TouchableOpacity onPress={() => onDelete(question.id)}>
-            <Text style={styles.deleteText}>削除</Text>
-          </TouchableOpacity>
-        ) : null}
+        <View style={styles.headerActions}>
+          {!isOwner && !isSenpai ? (
+            <TouchableOpacity onPress={() => moderation.openBlock(moderationTarget)}>
+              <Text style={styles.actionText}>ブロック</Text>
+            </TouchableOpacity>
+          ) : null}
+          {!isOwner ? (
+            <TouchableOpacity onPress={() => moderation.openReport(moderationTarget)}>
+              <Text style={styles.actionText}>通報</Text>
+            </TouchableOpacity>
+          ) : null}
+          {isOwner && onDelete ? (
+            <TouchableOpacity onPress={() => onDelete(question.id)}>
+              <Text style={styles.deleteText}>削除</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       <Text style={styles.content}>{question.content}</Text>
@@ -188,6 +225,33 @@ export function QuestionCard({
           ))}
         </View>
       ) : null}
+
+      <ContentModerationSheet
+        visible={moderation.isVisible}
+        mode={moderation.mode}
+        target={moderation.target}
+        reportReasons={moderation.reportReasons}
+        submitting={moderation.submitting}
+        onClose={moderation.close}
+        onSelectReason={async (reason) => {
+          const success = await moderation.submitReport(reason)
+          Alert.alert(
+            success ? 'ご報告ありがとうございます' : '送信エラー',
+            success
+              ? '運営へ通知しました。24時間以内に対応いたします。'
+              : '報告の送信に失敗しました。'
+          )
+        }}
+        onConfirmBlock={async () => {
+          const success = await moderation.submitBlock()
+          Alert.alert(
+            success ? '完了' : '送信エラー',
+            success
+              ? 'ブロックしました。投稿はすぐに非表示になります。'
+              : 'ブロックの送信に失敗しました。'
+          )
+        }}
+      />
     </View>
   )
 }
@@ -203,7 +267,14 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
   },
   title: {
     fontSize: 16,
@@ -214,6 +285,11 @@ const styles = StyleSheet.create({
   deleteText: {
     color: '#EF4444',
     fontSize: 12,
+  },
+  actionText: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '600',
   },
   content: {
     marginTop: 8,

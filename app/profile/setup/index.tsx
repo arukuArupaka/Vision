@@ -131,7 +131,7 @@ export default function ProfileSetupScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.scrollview} contentContainerStyle={styles.container}>
       <Text style={styles.title}>{isEditing ? 'プロフィール編集' : 'プロフィール設定'}</Text>
       <Text style={styles.subtitle}>掲示板で表示される情報です</Text>
 
@@ -245,10 +245,14 @@ function OptionList({
 }
 
 const styles = StyleSheet.create({
+  scrollview: {
+    backgroundColor: '#ffffff',
+  },
   container: {
     padding: 24,
-    paddingTop: 36,
+    paddingTop: 80,
     backgroundColor: '#ffffff',
+    flexGrow: 1,
   },
   center: {
     flex: 1,

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useState } from 'react'
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getSupabase } from '@/lib/supabase/client'
@@ -23,6 +24,7 @@ export function AppHeader({
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const bgColor = variant === 'primary' ? '#f97316' : '#fb923c'
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const handleBack = () => {
     if (onBackPress) {
@@ -48,6 +50,67 @@ export function AppHeader({
             const supabase = getSupabase()
             await supabase.auth.signOut()
             router.replace('/')
+          },
+        },
+      ]
+    )
+  }
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'アカウント削除',
+      'アカウントを削除しますか？この操作は元に戻せません。アカウントに紐づくすべてのデータが完全に削除されます。',
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsDeleting(true)
+              const supabase = getSupabase()
+
+              const { data: { user } } = await supabase.auth.getUser()
+
+              if (!user) {
+                Alert.alert('エラー', 'ログイン中のユーザーが見つかりませんでした。')
+                return
+              }
+
+              const relatedDeletes = [
+                () => supabase.from('blocks').delete().or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`),
+                () => supabase.from('reports').delete().or(`reporter_id.eq.${user.id},reported_id.eq.${user.id}`),
+                () => supabase.from('messages').delete().eq('sender_id', user.id),
+                () => supabase.from('answers').delete().eq('user_id', user.id),
+                () => supabase.from('questions').delete().eq('user_id', user.id),
+                () => supabase.from('chat_rooms').delete().or(`high_school_user_id.eq.${user.id},university_user_id.eq.${user.id}`),
+                () => supabase.from('profiles').delete().eq('id', user.id),
+              ]
+
+              for (const deleteFn of relatedDeletes) {
+                const { error } = await deleteFn()
+                if (error) {
+                  console.warn('Cleanup delete failed', error.message)
+                }
+              }
+
+              const { error: rpcError } = await supabase.rpc('delete_user', { target_user_id: user.id })
+              if (rpcError) {
+                console.error('delete_user RPC failed', rpcError)
+                throw rpcError
+              }
+
+              await supabase.auth.signOut()
+              router.replace('/')
+            } catch (error) {
+              console.error('Account deletion error:', error)
+              Alert.alert('エラー', '退会処理に失敗しました。関連データの削除や Supabase 側の delete_user 関数が設定されているかを確認してください。')
+            } finally {
+              setIsDeleting(false)
+            }
           },
         },
       ]
@@ -82,13 +145,27 @@ export function AppHeader({
           onPress={() => router.push('/chat')}
           style={styles.iconButton}
           accessibilityLabel="チャット"
+          disabled={isDeleting}
         >
           <Ionicons name="chatbubbles" size={20} color="#ffffff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleDeleteAccount}
+          style={styles.iconButton}
+          accessibilityLabel="アカウント削除"
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size={20} color="#ffffff" />
+          ) : (
+            <Ionicons name="person-remove" size={20} color="#ffffff" />
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleLogout}
           style={styles.iconButton}
           accessibilityLabel="ログアウト"
+          disabled={isDeleting}
         >
           <Ionicons name="log-out" size={20} color="#ffffff" />
         </TouchableOpacity>

@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { getBlockedUserIds } from '@/lib/moderation'
 import { getSupabase } from '@/lib/supabase/client'
 
 interface Profile {
@@ -76,6 +77,8 @@ export default function ChatListScreen() {
       .or(`high_school_user_id.eq.${data.user.id},university_user_id.eq.${data.user.id}`)
       .order('created_at', { ascending: false })
 
+    const blockedUserIds = await getBlockedUserIds(supabase, data.user.id)
+
     if (rooms) {
       const roomsWithUsers = await Promise.all(
         rooms.map(async (room) => {
@@ -117,7 +120,9 @@ export default function ChatListScreen() {
         })
       )
 
-      setChatRooms(roomsWithUsers.filter((r) => r.other_user))
+      setChatRooms(
+        roomsWithUsers.filter((r) => r.other_user && !blockedUserIds.has(r.other_user.id))
+      )
     }
 
     setLoading(false)
